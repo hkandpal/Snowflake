@@ -1,0 +1,76 @@
+create or replace sequence SEQ_ERR;
+create or replace table ERROR_LOG(ERR_SEQ INTEGER, APP_NAME VARCHAR(250), ERR_MSG VARCHAR(2500), MISC_STRING VARCHAR(2500), err_date timestamp);
+
+CREATE OR REPLACE PROCEDURE ERR_LOGGING(app_name varchar, err_msg varchar, misc_str varchar )
+returns string not null
+language javascript
+strict volatile
+execute as caller
+as
+$$
+try {
+    var v_time_st = getScalar("SELECT CURRENT_TIMESTAMP");
+    var v_err_seq = getScalar("SELECT SEQ_ERR.nextval");    
+    error_msg = 'THis is in the line before the execute';
+    var sqlCmd = `insert into ERROR_LOG (ERR_SEQ , APP_NAME, ERR_MSG , MISC_STRING, ERR_DATE) VALUES (:1, :2, :3, :4, :5)`;
+    stmt = snowflake.execute({ sqlText: sqlCmd, binds: [v_err_seq, APP_NAME, ERR_MSG, MISC_STR,v_time_st]});
+    result = 'Error message inserted';
+    }
+catch (err)  {
+    result= " "
+    result =  "Failed: Code: " + err.code + "\n  State: " + err.state;
+    result += "\n  Message: " + err.message;
+    result += "\nStack Trace:\n" + err.stackTraceTxt;
+    }  
+function getScalar(queryString) {
+    var out;
+    cmd1 = {sqlText: queryString};
+    stmt = snowflake.createStatement(cmd1);
+    var rs;
+    rs = stmt.execute();
+    rs.next();
+    return rs.getColumnValue(1);
+    return out;
+}
+
+    
+return result;
+$$;
+
+call ERR_LOGGING('TEST_APP', 'THis is an error messge', 'ON line 1');
+
+
+CREATE OR REPLACE procedure HK_TEST()
+returns string not null
+language javascript
+EXECUTE AS CALLER
+as
+$$
+try {
+    var APP_NAME = 'HK_TEST'
+    var err_trace = 'THis is the 1 st line'
+    var cmd = `select 2/0 from dual`
+    var sql = snowflake.createStatement({sqlText: cmd});
+    err_trace = 'Before the execute'
+    var result = sql.execute();
+    //result = "Succeeded";
+    }
+catch (err)  {
+    result= " "
+    result =  "Failed: Code: " + err.code + "\n  State: " + err.state;
+    result += "\n  Message: " + err.message;
+    result += "\nStack Trace:\n" + err.stackTraceTxt;
+//    query = "CALL ERR_LOGGING('${APP_NAME}', '${result}', '${err_trace}')";
+    query = "CALL ERR_LOGGING('"+APP_NAME+"', '"+result+"', '"+err_trace+"')";
+    A= snowflake.execute({ sqlText:query });
+    A.next();    
+    return_val = A.getColumnValue(1);
+    return return_val;
+    }    
+return result;
+$$;
+
+call hk_test();
+
+
+select * from  ERROR_LOG;
